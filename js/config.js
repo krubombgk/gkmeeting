@@ -1,4 +1,4 @@
-export   const firebaseConfig = {
+export   const FIREBASE_CONFIG = {
     apiKey: "AIzaSyDoMrtN5t7uVh5IHzrec7GquxBKXDYL_S4",
     authDomain: "gk-meeting-b50b2.firebaseapp.com",
     projectId: "gk-meeting-b50b2",
