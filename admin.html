@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<title>Admin · Goalkeeper Meeting</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body class="admin">
+
+<div class="site-header">
+  <div class="admin-top">
+    <div class="admin-brand">🔐 Admin</div>
+    <select id="ev-select" class="ev-select" style="display:none"></select>
+    <div class="admin-user" id="admin-user"></div>
+  </div>
+</div>
+<div class="nav-bar" id="admin-nav" style="display:none">
+  <div class="nav-bar-inner">
+    <button class="nav-btn active" data-tab="overview">ภาพรวม</button>
+    <button class="nav-btn" data-tab="regs">ผู้สมัคร</button>
+    <button class="nav-btn" data-tab="orders">สั่งเสื้อ</button>
+    <button class="nav-btn" data-tab="shirts">สรุปเสื้อ</button>
+    <button class="nav-btn" data-tab="sponsors">ผู้สนับสนุน</button>
+    <button class="nav-btn" data-tab="settings">ตั้งค่างาน</button>
+    <button class="nav-btn" data-tab="team">ทีมงาน</button>
+  </div>
+</div>
+
+<div class="main">
+  <div id="admin-root"><div class="loader">กำลังโหลด...</div></div>
+</div>
+
+<script type="module" src="js/admin.js"></script>
+</body>
+</html>

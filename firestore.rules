@@ -1,0 +1,180 @@
+rules_version = '2';
+
+// ============================================================
+//  Goalkeeper Meeting — Firestore Security Rules
+//  คัดลอกทั้งไฟล์ไปวางที่ Firebase Console → Firestore → Rules → Publish
+// ============================================================
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && exists(/databases/$(database)/documents/admins/$(request.auth.token.email));
+    }
+    function evPath(eid) { return /databases/$(database)/documents/events/$(eid); }
+    function ctrPath(eid) { return /databases/$(database)/documents/events/$(eid)/meta/counters; }
+    function regPath(eid, id) { return /databases/$(database)/documents/events/$(eid)/registrations/$(id); }
+    function ordPath(eid, id) { return /databases/$(database)/documents/events/$(eid)/shirtOrders/$(id); }
+    function namePath(eid, k) { return /databases/$(database)/documents/events/$(eid)/names/$(k); }
+    function str(v, max) { return v is string && v.size() <= max; }
+    function reqStr(v, max) { return v is string && v.size() > 0 && v.size() <= max; }
+
+    // ── ทีมงาน ──────────────────────────────────────
+    match /admins/{email} {
+      allow get: if request.auth != null && request.auth.token.email == email;
+      allow read, write: if isAdmin();
+    }
+
+    // ── งานหลัก ─────────────────────────────────────
+    match /site/{doc} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /events/{eid} {
+      allow read: if true;
+      allow write: if isAdmin();
+
+      // ── ตัวนับที่นั่ง / เลขที่ ───────────────────
+      match /meta/{doc} {
+        allow read: if true;
+        allow create, delete: if isAdmin();
+        allow update: if isAdmin() || publicCounterBump(eid);
+      }
+
+      // ── ผู้สมัคร ────────────────────────────────
+      match /registrations/{rid} {
+        allow get: if true;               // ต้องรู้ id (สุ่ม 20 ตัว) ซึ่งได้จากการค้นด้วยเบอร์โทรเท่านั้น
+        allow list: if isAdmin();
+        allow create: if isAdmin() || validNewReg(eid, rid);
+        allow update: if isAdmin() || validSlipUpdate();
+        allow delete: if isAdmin();
+      }
+
+      // ── สั่งเสื้ออย่างเดียว ──────────────────────
+      match /shirtOrders/{oid} {
+        allow get: if true;
+        allow list: if isAdmin();
+        allow create: if isAdmin() || validNewOrder(eid, oid);
+        allow update: if isAdmin() || validSlipUpdate();
+        allow delete: if isAdmin();
+      }
+
+      // ── กันชื่อซ้ำ (เก็บแค่เวลา ไม่มีข้อมูลส่วนตัว) ─
+      match /names/{key} {
+        allow get: if true;
+        allow list, update, delete: if isAdmin();
+        allow create: if isAdmin() || (
+          request.resource.data.keys().hasOnly(['at'])
+          && request.resource.data.at == request.time
+          && get(evPath(eid)).data.registrationOpen == true
+        );
+      }
+
+      // ── เบอร์โทร (hash) → รายการของเบอร์นั้น ──────
+      match /lookup/{h} {
+        allow get: if true;
+        allow list, delete: if isAdmin();
+        allow create: if isAdmin() || (
+          request.resource.data.keys().hasOnly(['refs'])
+          && request.resource.data.refs.size() == 1
+          && isNewRef(eid, request.resource.data.refs[0])
+        );
+        allow update: if isAdmin() || (
+          request.resource.data.keys().hasOnly(['refs'])
+          && request.resource.data.refs.size() == resource.data.refs.size() + 1
+          && request.resource.data.refs.size() <= 25
+          && request.resource.data.refs.hasAll(resource.data.refs)
+          && isNewRef(eid, request.resource.data.refs[request.resource.data.refs.size() - 1])
+        );
+      }
+
+      match /sponsors/{sid} {
+        allow read: if true;
+        allow write: if isAdmin();
+      }
+    }
+
+    // ── ฟังก์ชันตรวจสอบ ──────────────────────────────
+
+    // ref ต้องชี้ไปที่เอกสารที่ "เพิ่งสร้าง" ในคำสั่งเดียวกันเท่านั้น
+    function isNewRef(eid, r) {
+      let p = r.split(':');
+      return p.size() == 2 && (
+        (p[0] == 'r' && existsAfter(regPath(eid, p[1])) && !exists(regPath(eid, p[1])))
+        || (p[0] == 's' && existsAfter(ordPath(eid, p[1])) && !exists(ordPath(eid, p[1])))
+      );
+    }
+
+    // ผู้สมัครเพิ่มตัวนับได้ครั้งละ 1 และต้องมีเอกสารใหม่คู่กันเสมอ
+    function publicCounterBump(eid) {
+      let o = resource.data;
+      let d = request.resource.data;
+      let keys = d.diff(o).affectedKeys();
+      return (
+        keys.hasOnly(['regSeq', 'pending', 'reserve', 'lastRegId'])
+        && d.regSeq == o.regSeq + 1
+        && ((d.pending == o.pending + 1 && d.reserve == o.reserve)
+            || (d.reserve == o.reserve + 1 && d.pending == o.pending))
+        && existsAfter(regPath(eid, d.lastRegId)) && !exists(regPath(eid, d.lastRegId))
+      ) || (
+        keys.hasOnly(['shirtSeq', 'lastShirtId'])
+        && d.shirtSeq == o.shirtSeq + 1
+        && existsAfter(ordPath(eid, d.lastShirtId)) && !exists(ordPath(eid, d.lastShirtId))
+      );
+    }
+
+    function validNewReg(eid, rid) {
+      let d = request.resource.data;
+      let ev = get(evPath(eid)).data;
+      let c0 = get(ctrPath(eid)).data;
+      let c1 = getAfter(ctrPath(eid)).data;
+      return d.keys().hasOnly(['code', 'seq', 'createdAt', 'firstName', 'lastName', 'nameKey', 'phone', 'age',
+          'nickname', 'registeredBy', 'platform', 'platformId', 'shirt', 'shirtSize', 'shirtName', 'shirtNumber',
+          'extras', 'total', 'status', 'slipUrl', 'slipAt', 'deadlineOverride', 'preReg', 'note'])
+        && ev.registrationOpen == true
+        && d.seq == c0.regSeq + 1 && c1.regSeq == d.seq && c1.lastRegId == rid
+        && d.createdAt == request.time
+        && ((d.status == 'pending' && c0.pending + c0.confirmed < ev.quota && c1.pending == c0.pending + 1)
+            || (d.status == 'reserve' && c0.pending + c0.confirmed >= ev.quota && c1.reserve == c0.reserve + 1))
+        && d.slipUrl == '' && d.slipAt == null && d.deadlineOverride == null && d.preReg == false && d.note == ''
+        && reqStr(d.firstName, 60) && reqStr(d.lastName, 60) && reqStr(d.nameKey, 200)
+        && reqStr(d.phone, 20) && reqStr(d.nickname, 60) && str(d.registeredBy, 80)
+        && str(d.platform, 20) && str(d.platformId, 80)
+        && d.shirt is int && reqStr(d.shirtSize, 10) && str(d.shirtName, 20) && str(d.shirtNumber, 4)
+        && d.extras is list && d.extras.size() <= 5
+        && d.total is int && d.total >= ev.entryFee
+        && existsAfter(namePath(eid, d.nameKey)) && !exists(namePath(eid, d.nameKey));
+    }
+
+    function validNewOrder(eid, oid) {
+      let d = request.resource.data;
+      let ev = get(evPath(eid)).data;
+      let c0 = get(ctrPath(eid)).data;
+      let c1 = getAfter(ctrPath(eid)).data;
+      return d.keys().hasOnly(['code', 'seq', 'createdAt', 'firstName', 'lastName', 'phone', 'platform', 'platformId',
+          'round', 'items', 'delivery', 'address', 'total', 'status', 'slipUrl', 'slipAt', 'note'])
+        && ev.shirtOrderOpen == true
+        && d.seq == c0.shirtSeq + 1 && c1.shirtSeq == d.seq && c1.lastShirtId == oid
+        && d.createdAt == request.time
+        && d.status == 'pending' && d.slipUrl == '' && d.slipAt == null && d.note == ''
+        && reqStr(d.firstName, 60) && reqStr(d.lastName, 60) && reqStr(d.phone, 20)
+        && str(d.platform, 20) && str(d.platformId, 80)
+        && d.items is list && d.items.size() >= 1 && d.items.size() <= 20
+        && d.delivery in ['pickup', 'ship']
+        && d.total is int && d.total >= ev.shirtPrice * d.items.size();
+    }
+
+    // ผู้สมัครแนบสลิปได้เอง (เปลี่ยนได้แค่ลิงก์สลิป เวลา และสถานะ → แนบสลิปแล้ว)
+    function validSlipUpdate() {
+      let d = request.resource.data;
+      let o = resource.data;
+      return d.diff(o).affectedKeys().hasOnly(['slipUrl', 'slipAt', 'status'])
+        && o.status in ['pending', 'slip']
+        && d.status == 'slip'
+        && d.slipUrl is string && d.slipUrl.matches('https://res[.]cloudinary[.]com/.*')
+        && d.slipAt == request.time;
+    }
+  }
+}

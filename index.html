@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Goalkeeper Meeting</title>
+<meta name="description" content="สมัครร่วมงาน Goalkeeper Meeting และสั่งเสื้อ">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="site-header">
+  <div class="header-top">
+    <img class="header-logo" id="hlogo" alt="" onerror="this.style.display='none'">
+    <div class="header-text">
+      <div class="event-name" id="h-name">Goalkeeper Meeting</div>
+      <div class="event-date" id="h-date"></div>
+      <div class="event-sub" id="h-sub"></div>
+    </div>
+  </div>
+  <div class="sponsor-bar" id="sponsor-bar" style="display:none">
+    <div class="sp-label">Sponsored by</div>
+    <div class="carousel-outer"><div class="carousel-track" id="carousel-track"></div></div>
+  </div>
+</div>
+
+<div class="nav-bar">
+  <div class="nav-bar-inner">
+    <button class="nav-btn active" data-page="home">หน้าแรก</button>
+    <button class="nav-btn" data-page="compete">สมัครร่วมงาน</button>
+    <button class="nav-btn" data-page="shirt">สั่งเสื้อ</button>
+    <button class="nav-btn" data-page="status">ตรวจสอบสถานะ</button>
+  </div>
+</div>
+
+<div class="main">
+  <div id="page-home"><div class="loader">กำลังโหลด...</div></div>
+  <div id="page-compete" style="display:none"></div>
+  <div id="page-shirt" style="display:none"></div>
+  <div id="page-status" style="display:none"></div>
+  <div id="page-success" style="display:none"></div>
+</div>
+
+<script type="module" src="js/public.js"></script>
+</body>
+</html>
