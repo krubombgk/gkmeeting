@@ -123,7 +123,7 @@ setInterval(() => { if (tab === 'regs' || tab === 'overview') render(); }, 60e3)
 function render() {
   if (!EV || !C) return;
   document.querySelectorAll('[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
-  ({ overview: renderOverview, regs: renderRegs, orders: renderOrders, shirts: renderShirts, sponsors: renderSponsors, settings: renderSettings, team: renderTeam })[tab]();
+  ({ overview: renderOverview, regs: renderRegs, orders: renderOrders, shirts: renderShirts, people: renderPeople, sponsors: renderSponsors, settings: renderSettings, team: renderTeam })[tab]();
 }
 
 // ── คำนวณ ────────────────────────────────────────────
@@ -135,6 +135,7 @@ function actualCounts() {
   const n = s => REGS.filter(r => r.status === s).length;
   return { pending: n('pending') + n('slip'), confirmed: n('confirmed'), reserve: n('reserve') };
 }
+const isYouth = r => r.age != null && r.age !== '' && Number(r.age) < (Number(EV.youthAge) || 17);
 const fullName = r => `${r.firstName || ''} ${r.lastName || ''}`.trim();
 const tel = p => `<a href="tel:${esc(String(p).replace(/[^\d+]/g, ''))}">${esc(p)}</a>`;
 
@@ -254,7 +255,7 @@ function regCard(r, qpos) {
     </div>
     <div class="rcard-body">
       <div class="rcard-main">
-        <div class="reg-name">${esc(fullName(r))}${r.nickname ? ` <span class="muted-sm">(${esc(r.nickname)})</span>` : ''}${r.age ? ` <span class="muted-sm">· ${esc(r.age)} ปี${Number(r.age) < EV.youthAge ? ' · เยาวชน' : ''}</span>` : ''}</div>
+        <div class="reg-name">${esc(fullName(r))}${r.nickname ? ` <span class="muted-sm">(${esc(r.nickname)})</span>` : ''}${r.age ? ` <span class="muted-sm">· ${esc(r.age)} ปี${isYouth(r) ? ' · เยาวชน' : ''}</span>` : ''}</div>
         <div class="muted-sm">📞 ${tel(r.phone)}${r.platform ? ` · ${esc(r.platform)}: ${esc(r.platformId)}` : ''}${r.registeredBy ? ` · สมัครแทนโดย ${esc(r.registeredBy)}` : ''}</div>
         ${r.shirtSize ? `<div class="muted-sm">👕 ${esc(shirtNameOf(EV, r.shirt))} / ${esc(r.shirtSize)}${r.shirtName ? ' / ' + esc(r.shirtName) : ''}${r.shirtNumber ? ' / #' + esc(r.shirtNumber) : ''}</div>` : ''}
         ${extras}
@@ -634,6 +635,84 @@ function renderShirts() {
 }
 const sortItems = items => [...items].sort((a, b) => (a.shirt - b.shirt) || (EV.sizes.indexOf(a.size) - EV.sizes.indexOf(b.size)) || String(a.name || '').localeCompare(String(b.name || '')));
 
+// ── สรุปผู้สมัคร (ตามอายุ) ────────────────────────────
+let peopleF = 'seat';
+const PEOPLE_FILTERS = [
+  ['seat', 'ผู้มีที่นั่ง (ไม่รวมสำรอง)', r => HOLDS_SEAT(r.status)],
+  ['confirmed', 'ยืนยันแล้วเท่านั้น', r => r.status === 'confirmed'],
+  ['withReserve', 'รวมตัวสำรอง', r => r.status !== 'cancelled']
+];
+function peopleGroups() {
+  const f = PEOPLE_FILTERS.find(x => x[0] === peopleF)[2];
+  const list = REGS.filter(f).sort((a, b) => (Number(a.age) || 999) - (Number(b.age) || 999) || fullName(a).localeCompare(fullName(b), 'th'));
+  const hasAge = r => r.age != null && r.age !== '' && Number(r.age) > 0;
+  return {
+    list,
+    youth: list.filter(r => hasAge(r) && isYouth(r)),
+    adult: list.filter(r => hasAge(r) && !isYouth(r)),
+    noAge: list.filter(r => !hasAge(r))
+  };
+}
+const youthMax = () => (Number(EV.youthAge) || 17) - 1;
+function renderPeople() {
+  const g = peopleGroups();
+  const ages = {};
+  g.list.forEach(r => { if (Number(r.age) > 0) ages[r.age] = (ages[r.age] || 0) + 1; });
+  const ageKeys = Object.keys(ages).map(Number).sort((a, b) => a - b);
+  const maxN = Math.max(1, ...Object.values(ages));
+  const table = (rows, title, cls) => `<div class="admin-section people-sec">
+    <div class="admin-title">${title} <span class="admin-badge">${rows.length} คน</span></div>
+    ${rows.length ? `<div class="table-wrap"><table class="list-table people-table ${cls}"><thead><tr>
+      <th>#</th><th>เลขสมัคร</th><th>ชื่อ-นามสกุล</th><th>ชื่อในงาน</th><th>อายุ</th><th>เสื้อ</th><th>ไซส์</th><th>ชื่อหลัง / เบอร์</th><th>เสื้อเพิ่ม</th><th class="no-print">สถานะ</th></tr></thead>
+      <tbody>${rows.map((r, i) => `<tr><td>${i + 1}</td><td>${esc(r.code)}</td><td>${esc(fullName(r))}</td><td>${esc(r.nickname || '')}</td>
+        <td class="age-cell">${esc(r.age ?? '-')}</td><td>${r.shirtSize ? esc(shirtNameOf(EV, r.shirt)) : '-'}</td><td>${esc(r.shirtSize || '-')}</td>
+        <td>${esc([r.shirtName, r.shirtNumber ? '#' + r.shirtNumber : ''].filter(Boolean).join(' ')) || '-'}</td>
+        <td>${(r.extras || []).length || ''}</td><td class="no-print"><span class="status-badge ${STATUS[r.status]?.badge}">${STATUS[r.status]?.label}</span></td></tr>`).join('')}</tbody></table></div>`
+      : '<div class="muted-sm">ไม่มีรายชื่อ</div>'}</div>`;
+  root.innerHTML = `
+    <div class="admin-section no-print">
+      <div class="admin-title">👥 สรุปผู้สมัครตามอายุ</div>
+      <div class="sf-bar">${PEOPLE_FILTERS.map(([k, l]) => `<button class="sf-btn${peopleF === k ? ' active' : ''}" data-pf="${k}">${l}</button>`).join('')}</div>
+      <div class="youth-row">เยาวชน = อายุไม่เกิน <input type="number" id="youth-max" value="${youthMax()}" min="1" max="99"> ปี
+        <button class="mini-btn" id="youth-save">บันทึก</button></div>
+      <div class="kpi-grid" style="margin-top:.75rem">
+        ${kpi('ทั้งหมด', g.list.length, 'var(--dark)')}${kpi(`เยาวชน (≤${youthMax()})`, g.youth.length, '#185FA5')}
+        ${kpi('ผู้ใหญ่', g.adult.length, 'var(--red)')}${kpi('ยังไม่ระบุอายุ', g.noAge.length, '#888')}
+      </div>
+      ${ageKeys.length ? `<div class="slabel">จำนวนคนแต่ละอายุ</div><div class="age-bars">${ageKeys.map(a => `<div class="age-bar-row">
+        <span class="age-lbl">${a} ปี</span><div class="age-bar"><div class="${a <= youthMax() ? 'y' : 'a'}" style="width:${ages[a] / maxN * 100}%"></div></div><span class="age-n">${ages[a]}</span></div>`).join('')}</div>` : ''}
+      <div class="btn-row"><button class="add-btn-sm" id="ppl-print">🖨 พิมพ์รายชื่อ</button><button class="add-btn-sm" id="ppl-xls">⬇ ดาวน์โหลด Excel</button></div>
+    </div>
+    <div class="print-only print-head"><strong>${esc(EV.name)}</strong> · รายชื่อผู้สมัครตามอายุ · ${esc(PEOPLE_FILTERS.find(x => x[0] === peopleF)[1])} · พิมพ์ ${fmtDate(Date.now())}</div>
+    ${table(g.youth, `🧒 เยาวชน (อายุไม่เกิน ${youthMax()} ปี)`, 'youth')}
+    ${table(g.adult, `🧤 ผู้ใหญ่ (${youthMax() + 1} ปีขึ้นไป)`, 'adult')}
+    ${g.noAge.length ? table(g.noAge, '❓ ยังไม่ระบุอายุ (แก้ได้ที่แท็บผู้สมัคร → แก้ไข)', 'noage') : ''}`;
+  root.querySelectorAll('[data-pf]').forEach(b => b.onclick = () => { peopleF = b.dataset.pf; renderPeople(); });
+  $('youth-save').onclick = async () => {
+    const n = Number($('youth-max').value);
+    if (!(n > 0)) return toast('กรุณาใส่อายุ');
+    await updateDoc(ref.event(EID), { youthAge: n + 1 });
+    toast(`บันทึกแล้ว: เยาวชน = อายุไม่เกิน ${n} ปี`);
+  };
+  $('ppl-print').onclick = () => window.print();
+  $('ppl-xls').onclick = exportPeople;
+}
+async function exportPeople() {
+  let X;
+  try { X = await loadXLSX(); } catch { return toast('โหลดตัวสร้าง Excel ไม่สำเร็จ'); }
+  const g = peopleGroups(), wb = X.utils.book_new();
+  const head = ['#', 'เลขสมัคร', 'ชื่อ', 'นามสกุล', 'ชื่อในงาน', 'อายุ', 'แบบเสื้อ', 'ไซส์', 'ชื่อหลังเสื้อ', 'เบอร์เสื้อ', 'เสื้อเพิ่ม (ตัว)', 'เบอร์โทร', 'สมัครแทนโดย', 'สถานะ'];
+  const row = (r, i) => [i + 1, r.code, r.firstName, r.lastName, r.nickname || '', r.age ?? '', r.shirtSize ? shirtNameOf(EV, r.shirt) : '', r.shirtSize || '',
+    r.shirtName || '', r.shirtNumber || '', (r.extras || []).length, r.phone, r.registeredBy || '', STATUS[r.status]?.label];
+  const widths = [4, 10, 14, 14, 12, 5, 14, 6, 12, 6, 8, 13, 14, 12];
+  const add = (name, rows) => { const ws = X.utils.aoa_to_sheet([head, ...rows.map(row)]); ws['!cols'] = widths.map(w => ({ wch: w })); X.utils.book_append_sheet(wb, ws, name); };
+  add(`เยาวชน (≤${youthMax()})`, g.youth);
+  add('ผู้ใหญ่', g.adult);
+  if (g.noAge.length) add('ไม่ระบุอายุ', g.noAge);
+  add('ทั้งหมด (เรียงอายุ)', g.list);
+  X.writeFile(wb, `${EID}-ผู้สมัครตามอายุ.xlsx`);
+}
+
 async function loadXLSX() {
   if (window.XLSX) return window.XLSX;
   await new Promise((res, rej) => {
@@ -727,7 +806,7 @@ function renderSettings() {
     <div class="admin-section"><div class="admin-title">การรับสมัคร</div>
       <div class="toggle-row">${chk('registrationOpen', 'เปิดรับสมัคร')}${chk('shirtOrderOpen', 'เปิดสั่งเสื้อ')}</div>
       <div class="frow">${num('quota', 'จำนวนที่รับ (คน)')}${num('slipHours', 'เวลาแนบสลิป (ชม.)')}</div>
-      <div class="frow">${num('youthAge', 'เยาวชน = อายุต่ำกว่า')}${num('maxPerPhone', 'สมัครได้สูงสุดต่อเบอร์')}</div>
+      <div class="frow">${num('youthAge', 'เยาวชน = อายุต่ำกว่า (เช่น 17 = อายุ 16 ลงมา)')}${num('maxPerPhone', 'สมัครได้สูงสุดต่อเบอร์')}</div>
     </div>
     <div class="admin-section"><div class="admin-title">ข้อมูลงาน</div>
       ${txt('name', 'ชื่องาน (หัวเว็บ)')}

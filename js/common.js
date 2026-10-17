@@ -15,7 +15,7 @@ export const DEFAULT_EVENT = {
   quota: 32,
   registrationOpen: false,
   shirtOrderOpen: false,
-  youthAge: 15,
+  youthAge: 17,
   slipHours: 24,
   maxPerPhone: 5,
   entryFee: 390,
