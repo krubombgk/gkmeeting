@@ -375,3 +375,31 @@ details summary::-webkit-details-marker{display:none}
 @media (max-width:480px){
   body:not(.admin) .nav-btn{flex:1;padding:.7rem .35rem;font-size:.8rem}
 }
+
+/* ── สรุปผู้สมัคร ─────────────────────────────── */
+.youth-row{display:flex;align-items:center;gap:.4rem;font-size:.85rem;flex-wrap:wrap}
+.youth-row input{width:64px;height:32px;border:1px solid #ddd;border-radius:5px;text-align:center;font-size:.9rem;font-family:'Sarabun',sans-serif}
+.age-bars{display:flex;flex-direction:column;gap:3px;margin-bottom:.75rem}
+.age-bar-row{display:flex;align-items:center;gap:.5rem;font-size:.78rem}
+.age-lbl{width:44px;text-align:right;color:#666}
+.age-n{width:24px;font-weight:600}
+.age-bar{flex:1;height:14px;background:#f5f0e2;border-radius:3px;overflow:hidden}
+.age-bar div{height:100%;border-radius:3px}
+.age-bar .y{background:#378ADD}.age-bar .a{background:var(--red)}
+.btn-row{display:flex;gap:6px}
+.btn-row .add-btn-sm{flex:1}
+.people-table .age-cell{font-weight:600;text-align:center}
+.people-table td:first-child{color:#999;text-align:center}
+.print-only{display:none}
+@media print{
+  .site-header,.nav-bar,.no-print,.toast{display:none!important}
+  .print-only{display:block;margin-bottom:8px;font-size:12px}
+  body,.main{background:#fff!important;padding:0;max-width:none}
+  .admin-section{border:none;padding:0;margin-bottom:14px}
+  .people-sec{break-inside:auto}
+  .table-wrap{overflow:visible}
+  .list-table{font-size:11px}
+  .list-table th,.list-table td{padding:3px 5px}
+  .list-table thead{display:table-header-group}
+  .list-table tr{break-inside:avoid}
+}
