@@ -403,3 +403,7 @@ details summary::-webkit-details-marker{display:none}
   .list-table thead{display:table-header-group}
   .list-table tr{break-inside:avoid}
 }
+.q-badge.prod{background:#EEE8FB;color:#4A2C8A;border-color:#CDBDF0}
+.batch-info{font-size:.8rem;background:#EEE8FB;color:#4A2C8A;border-radius:6px;padding:.5rem .7rem;line-height:1.6}
+.row-cancel td{color:#aaa;text-decoration:line-through}
+code{font-size:.75rem;background:#f5f0e2;padding:1px 4px;border-radius:3px}
