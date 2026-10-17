@@ -402,6 +402,8 @@ function renderShirt() {
   if (!EV.shirtOrderOpen) { toast('ยังไม่เปิด / ปิดรับสั่งเสื้อแล้วครับ', 3000); show('home'); return; }
   const pg = $('page-shirt');
   const rounds = EV.shirtRounds || [];
+  const openRounds = rounds.map((r, i) => ({ ...r, i })).filter(r => !r.closed);
+  if (openRounds.length && !openRounds.some(r => r.i === O.round)) O.round = openRounds[0].i;
   pg.innerHTML = `
     <div class="page-hdr"><button class="back-btn" data-go="home">← กลับ</button><div class="page-title">สั่งเสื้ออย่างเดียว</div></div>
     <div class="section-card"><div class="slabel">ข้อมูลผู้สั่ง</div>
@@ -415,8 +417,8 @@ function renderShirt() {
         <div class="field"><label>ID / ชื่อบัญชี <span class="req">*</span></label><input id="o-pid" data-k="platformId" placeholder="@username หรือ ID"></div>
       </div>
     </div>
-    ${rounds.length > 1 ? `<div class="section-card"><div class="slabel">รอบการส่ง</div><div class="dl-picker">
-      ${rounds.map((r, i) => `<div class="dl-opt${O.round === i ? ' active' : ''}" data-round="${i}"><h4>${esc(r.label)}</h4><p>${esc(r.orderBy)}</p><div class="dl-date">${esc(r.receive)}</div></div>`).join('')}
+    ${openRounds.length ? `<div class="section-card"><div class="slabel">รอบการส่ง</div><div class="dl-picker">
+      ${openRounds.map(r => `<div class="dl-opt${O.round === r.i ? ' active' : ''}" data-round="${r.i}"><h4>${esc(r.label)}</h4><p>${esc(r.orderBy)}</p><div class="dl-date">${esc(r.receive)}</div></div>`).join('')}
     </div></div>` : ''}
     <div class="section-card"><div class="slabel">รายการเสื้อ</div>
       <div class="shirt-tabs">${EV.shirts.map((s, i) => `<button class="shirt-tab${i === 0 ? ' active' : ''}" data-shirt="${i}">${esc(s.name)}</button>`).join('')}</div>
@@ -510,7 +512,7 @@ async function submitOrder() {
         code: codeOf(ev.shirtIdPrefix, seq), seq, createdAt: serverTimestamp(),
         firstName: O.fn.trim(), lastName: O.ln.trim(), phone: O.ph.trim(),
         platform: O.platform, platformId: O.platformId.trim(),
-        round: (ev.shirtRounds || []).length ? O.round : -1,
+        round: (ev.shirtRounds || []).some((r, i) => i === O.round && !r.closed) ? O.round : -1,
         items: O.items.map(it => ({ shirt: Number(it.shirt) || 0, size: it.size, name: String(it.name || '').trim(), num: String(it.num || '') })),
         delivery: O.delivery,
         address: O.delivery === 'ship' ? { name: O.addr.name.trim(), address: O.addr.address.trim(), phone: O.addr.phone.trim() } : null,

@@ -16,7 +16,7 @@ let USER = null, EID = '', EV = null, C = null, SITE = {};
 let EVENTS = [], REGS = [], ORDERS = [], SPONSORS = [];
 let tab = 'overview', unsubs = [];
 let regFilter = 'all', regSearch = '', orderFilter = 'all', orderSearch = '';
-let shirtF = { status: 'active', source: 'all', round: 'all' };
+let shirtF = { status: 'active', source: 'all', round: 'all', batch: undefined };
 let draft = null;
 const store = { get: k => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
 
@@ -102,7 +102,7 @@ function newEventModal() {
 // ── SUBSCRIBE ────────────────────────────────────────
 function selectEvent(eid) {
   unsubs.forEach(u => u()); unsubs = [];
-  EID = eid; EV = null; C = null; REGS = []; ORDERS = []; SPONSORS = []; draft = null;
+  EID = eid; EV = null; C = null; REGS = []; ORDERS = []; SPONSORS = []; draft = null; shirtF.batch = undefined;
   store.set('gkm-admin-eid', eid);
   $('ev-select').value = eid;
   root.innerHTML = '<div class="loader">กำลังโหลด...</div>';
@@ -173,7 +173,7 @@ function renderOverview() {
       ${kpi('รอตรวจสลิป', slip, '#185FA5')}
       ${kpi('ตัวสำรอง', C.reserve, '#5F5E5A')}
       ${kpi('ออเดอร์เสื้อ', ORDERS.filter(o => o.status !== 'cancelled').length, 'var(--gd)')}
-      ${kpi('เสื้อทั้งหมด', shirtItems('active', 'all', 'all').length + ' ตัว', 'var(--red)')}
+      ${batchesOf().length ? kpi('เสื้อรอเข้ารอบผลิต', shirtItems('active', 'all', 'all', 'none').length + ' ตัว', 'var(--red)') : kpi('เสื้อทั้งหมด', shirtItems('active', 'all', 'all', 'all').length + ' ตัว', 'var(--red)')}
       ${kpi('ยอดยืนยันแล้ว', '฿' + money.toLocaleString(), '#1D9E75')}
     </div>`;
   root.querySelectorAll('[data-toggle]').forEach(el => el.onchange = async () => {
@@ -251,6 +251,7 @@ function regCard(r, qpos) {
       <div class="status-badge ${STATUS[r.status]?.badge}">${STATUS[r.status]?.label}</div>
       ${qpos >= 0 ? `<span class="q-badge">คิวสำรองที่ ${qpos + 1}</span>` : ''}
       ${r.preReg ? '<span class="q-badge">ล่วงหน้า</span>' : ''}
+      ${r.batch ? `<span class="q-badge prod">🏭 ผลิตรอบ ${r.batch}</span>` : ''}
       <span class="muted-sm" style="margin-left:auto">${fmtDate(r.createdAt)}</span>
     </div>
     <div class="rcard-body">
@@ -315,7 +316,7 @@ const ACTIONS = {
   },
   async cancel(id) {
     const r = findReg(id);
-    if (!confirm(`ยกเลิกการสมัครของ ${fullName(r)} (${r.code}) ?`)) return;
+    if (!confirm(`ยกเลิกการสมัครของ ${fullName(r)} (${r.code}) ?${r.batch ? `\n\n⚠️ เสื้อของคนนี้ผลิตไปแล้วในรอบ ${r.batch}` : ''}`)) return;
     if (!await changeStatus(id, 'cancelled')) return;
     const q = reserveQueue().filter(x => x.id !== id);
     toast(HOLDS_SEAT(r.status) && q.length ? `ยกเลิกแล้ว — คิวสำรองถัดไป: ${fullName(q[0])} ${q[0].phone}` : 'ยกเลิกแล้ว', 5000);
@@ -348,7 +349,7 @@ const ACTIONS = {
   // สั่งเสื้อ
   async oconfirm(id) { await updateDoc(ref.shirt(EID, id), { status: 'confirmed' }); toast('ยืนยันแล้ว ✓'); },
   async oreject(id) { if (confirm('สลิปไม่ผ่าน → กลับเป็น "รอแนบสลิป" ?')) { await updateDoc(ref.shirt(EID, id), { status: 'pending' }); toast('ส่งกลับแล้ว'); } },
-  async ocancel(id) { if (confirm('ยกเลิกออเดอร์นี้?')) { await updateDoc(ref.shirt(EID, id), { status: 'cancelled' }); toast('ยกเลิกแล้ว'); } },
+  async ocancel(id) { const o = ORDERS.find(x => x.id === id); if (confirm('ยกเลิกออเดอร์นี้?' + (o.batch ? `\n\n⚠️ ออเดอร์นี้ผลิตไปแล้วในรอบ ${o.batch}` : ''))) { await updateDoc(ref.shirt(EID, id), { status: 'cancelled' }); toast('ยกเลิกแล้ว'); } },
   async orestore(id) { await updateDoc(ref.shirt(EID, id), { status: 'pending' }); toast('กู้คืนแล้ว'); },
   async ohand(id) { const o = ORDERS.find(x => x.id === id); await updateDoc(ref.shirt(EID, id), { handedOver: !o.handedOver }); },
   async onote(id) {
@@ -475,6 +476,7 @@ async function addPreReg(full, phone, hours) {
 function editModal(r) {
   const sizeOpts = cur => ['', ...EV.sizes].map(s => `<option value="${esc(s)}"${cur === s ? ' selected' : ''}>${s || '-'}</option>`).join('');
   modal(`<div class="upload-modal-title">แก้ไข ${esc(r.code)}</div>
+    ${r.batch ? `<div class="alert alert-gold">🏭 เสื้อของคนนี้ส่งผลิตไปแล้วในรอบ ${r.batch} — ถ้าแก้แบบ/ไซส์/ชื่อหลัง/เบอร์ ต้องแจ้งโรงงานเอง</div>` : ''}
     <div class="frow"><div class="field"><label>ชื่อ</label><input id="e-fn" value="${esc(r.firstName)}"></div>
       <div class="field"><label>นามสกุล</label><input id="e-ln" value="${esc(r.lastName)}"></div></div>
     <div class="frow"><div class="field"><label>เบอร์โทร</label><input id="e-ph" value="${esc(r.phone)}"></div>
@@ -507,6 +509,8 @@ function editModal(r) {
         shirtNumber: $('e-num').value.trim(), total: Number($('e-total').value) || 0, note: $('e-note').value.trim()
       };
       if (r.preReg && upd.shirtSize) upd.preReg = false;
+      if (r.batch && (upd.shirt !== Number(r.shirt) || upd.shirtSize !== r.shirtSize || upd.shirtName !== (r.shirtName || '') || upd.shirtNumber !== (r.shirtNumber || ''))
+        && !confirm(`เสื้อตัวนี้ผลิตไปแล้วในรอบ ${r.batch} — ยืนยันแก้ไข? (อย่าลืมแจ้งโรงงาน)`)) return;
       try {
         await runTransaction(db, async tx => {
           const rS = await tx.get(ref.reg(EID, r.id)); const cur = data(rS);
@@ -565,6 +569,7 @@ function orderCard(o) {
     <div class="rcard-top"><span class="reg-id-badge">${esc(o.code)}</span>
       <div class="status-badge ${STATUS[o.status]?.badge}">${STATUS[o.status]?.label}</div>
       ${o.handedOver ? `<span class="q-badge ok">${o.delivery === 'ship' ? 'ส่งแล้ว' : 'มอบแล้ว'}</span>` : ''}
+      ${o.batch ? `<span class="q-badge prod">🏭 ผลิตรอบ ${o.batch}</span>` : ''}
       <span class="muted-sm" style="margin-left:auto">${fmtDate(o.createdAt)}</span></div>
     <div class="rcard-body"><div class="rcard-main">
       <div class="reg-name">${esc(fullName(o))}</div>
@@ -578,26 +583,30 @@ function orderCard(o) {
 }
 
 // ── สรุปเสื้อ ─────────────────────────────────────────
-function shirtItems(status = shirtF.status, source = shirtF.source, round = shirtF.round) {
-  const okStatus = s => status === 'confirmed' ? s === 'confirmed' : status === 'withReserve' ? s !== 'cancelled' : (s !== 'cancelled' && s !== 'reserve');
+const statusOk = mode => s => mode === 'confirmed' ? s === 'confirmed' : mode === 'withReserve' ? s !== 'cancelled' : (s !== 'cancelled' && s !== 'reserve');
+function itemsOf(regs, orders) {
   const out = [];
-  if (source !== 'orders' && (round === 'all' || round === 'reg')) {
-    REGS.filter(r => okStatus(r.status) && r.shirtSize).forEach(r => {
-      const base = { owner: fullName(r), phone: r.phone, code: r.code, status: r.status, source: 'ผู้สมัคร', round: 'ผู้สมัคร', delivery: 'รับในงาน' };
-      out.push({ ...base, shirt: r.shirt, size: r.shirtSize, name: r.shirtName, num: r.shirtNumber, kind: 'เสื้อผู้สมัคร' });
-      (r.extras || []).forEach(e => out.push({ ...base, shirt: e.shirt, size: e.size, name: e.name, num: e.num, kind: 'เสื้อเพิ่ม' }));
-    });
-  }
-  if (source !== 'regs') {
-    ORDERS.filter(o => okStatus(o.status) && (round === 'all' || String(o.round) === round)).forEach(o => {
-      const rd = (EV.shirtRounds || [])[o.round];
-      o.items.forEach(it => out.push({
-        owner: fullName(o), phone: o.phone, code: o.code, status: o.status, source: 'สั่งเสื้อ', round: rd ? rd.label : '-',
-        delivery: o.delivery === 'ship' ? 'ส่งพัสดุ' : 'รับในงาน', shirt: it.shirt, size: it.size, name: it.name, num: it.num, kind: 'สั่งเสื้อ'
-      }));
-    });
-  }
+  regs.filter(r => r.shirtSize).forEach(r => {
+    const base = { owner: fullName(r), phone: r.phone, code: r.code, status: r.status, batch: r.batch || 0, source: 'ผู้สมัคร', round: 'ผู้สมัคร', delivery: 'รับในงาน' };
+    out.push({ ...base, shirt: r.shirt, size: r.shirtSize, name: r.shirtName, num: r.shirtNumber, kind: 'เสื้อผู้สมัคร' });
+    (r.extras || []).forEach(e => out.push({ ...base, shirt: e.shirt, size: e.size, name: e.name, num: e.num, kind: 'เสื้อเพิ่ม' }));
+  });
+  orders.forEach(o => {
+    const rd = (EV.shirtRounds || [])[o.round];
+    o.items.forEach(it => out.push({
+      owner: fullName(o), phone: o.phone, code: o.code, status: o.status, batch: o.batch || 0, source: 'สั่งเสื้อ', round: rd ? rd.label : '-',
+      delivery: o.delivery === 'ship' ? 'ส่งพัสดุ' : 'รับในงาน', shirt: it.shirt, size: it.size, name: it.name, num: it.num, kind: 'สั่งเสื้อ'
+    }));
+  });
   return out;
+}
+// batch: 'all' | 'none' (ยังไม่เข้ารอบผลิต) | '1','2',... (รอบผลิตที่ปิดแล้ว — นับทุกสถานะ เพราะผลิตไปแล้ว)
+function shirtItems(status = shirtF.status, source = shirtF.source, round = shirtF.round, batch = shirtF.batch) {
+  const ok = statusOk(status);
+  const inBatch = d => batch === 'all' ? ok(d.status) : batch === 'none' ? (!d.batch && ok(d.status)) : d.batch === Number(batch);
+  const regs = source === 'orders' || !(round === 'all' || round === 'reg') ? [] : REGS.filter(inBatch);
+  const orders = source === 'regs' ? [] : ORDERS.filter(o => inBatch(o) && (round === 'all' || String(o.round) === round));
+  return itemsOf(regs, orders);
 }
 function matrix(items) {
   const sizes = [...EV.sizes];
@@ -605,33 +614,102 @@ function matrix(items) {
   const rows = EV.shirts.map((s, si) => ({ name: s.name, s, cells: sizes.map(sz => items.filter(i => Number(i.shirt) === si && i.size === sz).length) }));
   return { sizes, rows, colTotals: sizes.map((_, j) => rows.reduce((a, r) => a + r.cells[j], 0)) };
 }
+const matrixHTML = (m, total) => `<div class="table-wrap"><table class="mx-table">
+  <thead><tr><th>แบบ \\ ไซส์</th>${m.sizes.map(s => `<th>${esc(s)}</th>`).join('')}<th>รวม</th></tr></thead>
+  <tbody>${m.rows.map(r => `<tr><th><span class="sw" style="background:${esc(r.s.c1)};border-color:${esc(r.s.c2)}"></span>${esc(r.name)}</th>${r.cells.map(n => `<td class="${n ? '' : 'zero'}">${n || '·'}</td>`).join('')}<td class="tot">${r.cells.reduce((a, b) => a + b, 0)}</td></tr>`).join('')}</tbody>
+  <tfoot><tr><th>รวม</th>${m.colTotals.map(n => `<td>${n}</td>`).join('')}<td class="tot">${total}</td></tr></tfoot></table></div>`;
+const batchesOf = () => EV.batches || [];
+const batchLabel = b => b === 'all' ? 'ทุกรอบผลิต' : b === 'none' ? 'ยังไม่เข้ารอบผลิต' : `ผลิตรอบ ${b}`;
+
 function renderShirts() {
+  const batches = batchesOf();
+  if (shirtF.batch === undefined) shirtF.batch = 'none';
+  const isClosed = !['all', 'none'].includes(shirtF.batch);
   const items = shirtItems(), m = matrix(items);
+  const cancelledAfter = isClosed ? items.filter(i => i.status === 'cancelled' || i.status === 'reserve') : [];
   const rounds = EV.shirtRounds || [];
   const chip = (group, val, label) => `<button class="sf-btn${shirtF[group] === val ? ' active' : ''}" data-sf="${group}:${val}">${label}</button>`;
+  const bInfo = isClosed ? batches.find(b => String(b.no) === shirtF.batch) : null;
   root.innerHTML = `
     <div class="admin-section">
-      <div class="admin-title">👕 สรุปจำนวนเสื้อ <span class="admin-badge">${items.length} ตัว</span></div>
-      <div class="slabel">สถานะ</div>
-      <div class="sf-bar">${chip('status', 'active', 'ทั้งหมด (ไม่รวมสำรอง/ยกเลิก)')}${chip('status', 'confirmed', 'ยืนยันแล้วเท่านั้น')}${chip('status', 'withReserve', 'รวมตัวสำรอง')}</div>
+      <div class="admin-title">🏭 รอบผลิต</div>
+      <div class="sf-bar">${chip('batch', 'none', `ยังไม่เข้ารอบผลิต <span class="cnt">${shirtItems('active', 'all', 'all', 'none').length}</span>`)}
+        ${batches.map(b => chip('batch', String(b.no), `ผลิตรอบ ${b.no} <span class="cnt">${shirtItems('active', 'all', 'all', String(b.no)).length}</span>`)).join('')}
+        ${chip('batch', 'all', 'ทั้งหมด')}</div>
+      ${bInfo ? `<div class="batch-info">🔒 ปิดรอบเมื่อ ${fmtDate(bInfo.closedAt)} · นับรายการที่เข้ามาก่อน ${fmtDate(bInfo.cutoff)} · ${bInfo.filter === 'confirmed' ? 'เฉพาะยืนยันแล้ว' : 'ทั้งหมด (ไม่รวมสำรอง/ยกเลิก)'} · โดย ${esc(bInfo.by || '-')}
+        ${Number(shirtF.batch) === batches.length ? `<button class="link-btn danger" id="undo-batch">ยกเลิกการปิดรอบนี้</button>` : ''}</div>` : ''}
+      ${shirtF.batch === 'none' ? `<button class="add-btn-sm" id="close-batch" style="margin-top:.4rem">🔒 ปิดรอบผลิตที่ ${batches.length + 1}</button>
+        <div class="muted-sm" style="margin-top:.3rem">กดเมื่อจะส่งยอดให้โรงงาน — รายการที่ถูกนับจะถูกประทับว่าผลิตแล้ว ไม่ถูกนับซ้ำในรอบถัดไป</div>` : ''}
+    </div>
+    <div class="admin-section">
+      <div class="admin-title">👕 สรุปจำนวนเสื้อ · ${esc(batchLabel(shirtF.batch))} <span class="admin-badge">${items.length} ตัว</span></div>
+      ${isClosed ? '<div class="muted-sm" style="margin-bottom:.5rem">รอบที่ปิดแล้วแสดงทุกตัวที่ผลิต รวมคนที่ยกเลิกภายหลัง</div>'
+        : `<div class="slabel">สถานะ</div><div class="sf-bar">${chip('status', 'active', 'ทั้งหมด (ไม่รวมสำรอง/ยกเลิก)')}${chip('status', 'confirmed', 'ยืนยันแล้วเท่านั้น')}${chip('status', 'withReserve', 'รวมตัวสำรอง')}</div>`}
       <div class="slabel">ที่มา</div>
       <div class="sf-bar">${chip('source', 'all', 'ทั้งหมด')}${chip('source', 'regs', 'ผู้สมัคร + เสื้อเพิ่ม')}${chip('source', 'orders', 'สั่งเสื้ออย่างเดียว')}</div>
-      ${rounds.length ? `<div class="slabel">รอบ</div><div class="sf-bar">${chip('round', 'all', 'ทุกรอบ')}${chip('round', 'reg', 'ผู้สมัคร')}${rounds.map((r, i) => chip('round', String(i), esc(r.label))).join('')}</div>` : ''}
-      <div class="table-wrap"><table class="mx-table">
-        <thead><tr><th>แบบ \\ ไซส์</th>${m.sizes.map(s => `<th>${esc(s)}</th>`).join('')}<th>รวม</th></tr></thead>
-        <tbody>${m.rows.map(r => `<tr><th><span class="sw" style="background:${esc(r.s.c1)};border-color:${esc(r.s.c2)}"></span>${esc(r.name)}</th>${r.cells.map(n => `<td class="${n ? '' : 'zero'}">${n || '·'}</td>`).join('')}<td class="tot">${r.cells.reduce((a, b) => a + b, 0)}</td></tr>`).join('')}</tbody>
-        <tfoot><tr><th>รวม</th>${m.colTotals.map(n => `<td>${n}</td>`).join('')}<td class="tot">${items.length}</td></tr></tfoot>
-      </table></div>
+      ${rounds.length ? `<div class="slabel">รอบที่ลูกค้าเลือก</div><div class="sf-bar">${chip('round', 'all', 'ทุกรอบ')}${chip('round', 'reg', 'ผู้สมัคร')}${rounds.map((r, i) => chip('round', String(i), esc(r.label))).join('')}</div>` : ''}
+      ${matrixHTML(m, items.length)}
       <div class="muted-sm" style="margin-top:.5rem">มีชื่อหลังเสื้อ ${items.filter(i => i.name).length} ตัว · มีเบอร์ ${items.filter(i => i.num).length} ตัว</div>
-      <button class="add-btn-sm" id="xls" style="margin-top:.75rem">⬇ ดาวน์โหลด Excel (สรุป + รายการเสื้อ + รายชื่อทั้งหมด)</button>
+      ${cancelledAfter.length ? `<div class="alert alert-gold" style="margin-top:.6rem">⚠️ ยกเลิก/กลายเป็นสำรองหลังสั่งผลิต ${cancelledAfter.length} ตัว (เสื้อเหลือ): ${cancelledAfter.map(i => `${esc(i.owner)} ${esc(shirtNameOf(EV, i.shirt))}/${esc(i.size)}`).join(', ')}</div>` : ''}
+      <button class="add-btn-sm" id="xls" style="margin-top:.75rem">⬇ ดาวน์โหลด Excel (${esc(batchLabel(shirtF.batch))})</button>
     </div>
     <div class="admin-section">
       <div class="admin-title">รายการเสื้อ (ตามตัวกรอง)</div>
-      <div class="table-wrap"><table class="list-table"><thead><tr><th>แบบ</th><th>ไซส์</th><th>ชื่อหลัง</th><th>เบอร์</th><th>เจ้าของ</th><th>ที่มา</th></tr></thead>
-      <tbody>${sortItems(items).map(i => `<tr><td>${esc(shirtNameOf(EV, i.shirt))}</td><td>${esc(i.size)}</td><td>${esc(i.name || '')}</td><td>${esc(i.num || '')}</td><td>${esc(i.owner)} <span class="muted-sm">${esc(i.code)}</span></td><td>${esc(i.kind)}</td></tr>`).join('')}</tbody></table></div>
+      <div class="table-wrap"><table class="list-table"><thead><tr><th>แบบ</th><th>ไซส์</th><th>ชื่อหลัง</th><th>เบอร์</th><th>เจ้าของ</th><th>ที่มา</th><th>รอบผลิต</th></tr></thead>
+      <tbody>${sortItems(items).map(i => `<tr class="${i.status === 'cancelled' ? 'row-cancel' : ''}"><td>${esc(shirtNameOf(EV, i.shirt))}</td><td>${esc(i.size)}</td><td>${esc(i.name || '')}</td><td>${esc(i.num || '')}</td><td>${esc(i.owner)} <span class="muted-sm">${esc(i.code)}</span></td><td>${esc(i.kind)}</td><td>${i.batch ? 'รอบ ' + i.batch : '-'}</td></tr>`).join('')}</tbody></table></div>
     </div>`;
   root.querySelectorAll('[data-sf]').forEach(b => b.onclick = () => { const [g, v] = b.dataset.sf.split(':'); shirtF[g] = v; renderShirts(); });
   $('xls').onclick = exportExcel;
+  if ($('close-batch')) $('close-batch').onclick = closeBatchModal;
+  if ($('undo-batch')) $('undo-batch').onclick = undoBatch;
+}
+
+// ── ปิดรอบผลิต ───────────────────────────────────────
+function batchCandidates(mode, cutoff) {
+  const ok = statusOk(mode);
+  const pick = d => !d.batch && ok(d.status) && ms(d.createdAt) <= cutoff;
+  return { regs: REGS.filter(r => r.shirtSize && pick(r)), orders: ORDERS.filter(pick) };
+}
+function closeBatchModal() {
+  const no = batchesOf().length + 1;
+  const pad = n => String(n).padStart(2, '0');
+  const d = new Date(), local = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  modal(`<div class="upload-modal-title">🔒 ปิดรอบผลิตที่ ${no}</div>
+    <div class="upload-modal-sub">รายการที่ตรงเงื่อนไขจะถูกประทับ "ผลิตรอบ ${no}" และจะไม่ถูกนับในรอบถัดไป</div>
+    <div class="slabel">นับสถานะไหน</div>
+    <div class="sf-bar"><button class="sf-btn active" data-cm="active">ทั้งหมด (ไม่รวมสำรอง/ยกเลิก)</button><button class="sf-btn" data-cm="confirmed">ยืนยันแล้วเท่านั้น</button></div>
+    <div class="field"><label>นับเฉพาะรายการที่เข้ามาก่อน</label><input type="datetime-local" id="cb-cut" value="${local}"></div>
+    <div class="hint-box">💡 ถ้าส่งยอดให้โรงงานไปแล้วจากไฟล์ Excel ให้ใส่เวลาตามชื่อไฟล์ เช่น <code>…-20261017-1430.xlsx</code> = 17 ต.ค. 14:30 และเลือกสถานะให้ตรงกับตอนที่ดาวน์โหลด</div>
+    <div id="cb-preview"></div>
+    <button class="upload-confirm-btn" id="cb-go">ยืนยันปิดรอบ</button>`, mdl => {
+    let mode = 'active';
+    const cutoff = () => new Date($('cb-cut').value).getTime() + 59999;
+    const refresh = () => {
+      const c = batchCandidates(mode, cutoff()), items = itemsOf(c.regs, c.orders);
+      $('cb-preview').innerHTML = `<div class="slabel">จะนับเข้ารอบ ${no}: ${c.regs.length} ผู้สมัคร + ${c.orders.length} ออเดอร์ = <strong>${items.length} ตัว</strong></div>${matrixHTML(matrix(items), items.length)}`;
+      $('cb-go').disabled = !items.length;
+    };
+    mdl.el.querySelectorAll('[data-cm]').forEach(b => b.onclick = () => { mode = b.dataset.cm; mdl.el.querySelectorAll('[data-cm]').forEach(x => x.classList.toggle('active', x === b)); refresh(); });
+    $('cb-cut').oninput = refresh;
+    refresh();
+    $('cb-go').onclick = async () => {
+      const c = batchCandidates(mode, cutoff());
+      const btn = $('cb-go'); btn.disabled = true; btn.textContent = 'กำลังบันทึก...';
+      try {
+        await Promise.all([...c.regs.map(r => updateDoc(ref.reg(EID, r.id), { batch: no })), ...c.orders.map(o => updateDoc(ref.shirt(EID, o.id), { batch: no }))]);
+        await updateDoc(ref.event(EID), { batches: [...batchesOf(), { no, closedAt: Timestamp.fromMillis(now()), cutoff: Timestamp.fromMillis(cutoff()), filter: mode, count: itemsOf(c.regs, c.orders).length, by: USER.email }] });
+        shirtF.batch = String(no); mdl.close(); toast(`ปิดรอบผลิตที่ ${no} แล้ว ✓`);
+      } catch (e) { console.error(e); toast('บันทึกไม่สำเร็จ: ' + (e.code || e.message), 4000); btn.disabled = false; btn.textContent = 'ยืนยันปิดรอบ'; }
+    };
+  });
+}
+async function undoBatch() {
+  const bs = batchesOf(), last = bs[bs.length - 1];
+  if (!last || !confirm(`ยกเลิกการปิดรอบผลิตที่ ${last.no}? รายการทั้งหมดในรอบนี้จะกลับไปเป็น "ยังไม่เข้ารอบผลิต"`)) return;
+  await Promise.all([...REGS.filter(r => r.batch === last.no).map(r => updateDoc(ref.reg(EID, r.id), { batch: null })),
+    ...ORDERS.filter(o => o.batch === last.no).map(o => updateDoc(ref.shirt(EID, o.id), { batch: null }))]);
+  await updateDoc(ref.event(EID), { batches: bs.slice(0, -1) });
+  shirtF.batch = 'none'; toast(`ยกเลิกการปิดรอบ ${last.no} แล้ว`);
 }
 const sortItems = items => [...items].sort((a, b) => (a.shirt - b.shirt) || (EV.sizes.indexOf(a.size) - EV.sizes.indexOf(b.size)) || String(a.name || '').localeCompare(String(b.name || '')));
 
@@ -729,27 +807,28 @@ async function exportExcel() {
   const wb = X.utils.book_new();
   const add = (name, rows, widths) => { const ws = X.utils.aoa_to_sheet(rows); if (widths) ws['!cols'] = widths.map(w => ({ wch: w })); X.utils.book_append_sheet(wb, ws, name); };
   const label = { active: 'ทั้งหมด (ไม่รวมสำรอง/ยกเลิก)', confirmed: 'ยืนยันแล้วเท่านั้น', withReserve: 'รวมตัวสำรอง' }[shirtF.status];
-  add('สรุปเสื้อ', [[EV.name], ['ตัวกรอง: ' + label], [],
+  add('สรุปเสื้อ', [[EV.name], [batchLabel(shirtF.batch) + (['all', 'none'].includes(shirtF.batch) ? ' · ' + label : '')], [],
     ['แบบ \\ ไซส์', ...m.sizes, 'รวม'],
     ...m.rows.map(r => [r.name, ...r.cells, r.cells.reduce((a, b) => a + b, 0)]),
     ['รวม', ...m.colTotals, items.length]], [18, ...m.sizes.map(() => 6), 8]);
-  add('รายการเสื้อ', [['แบบ', 'ไซส์', 'ชื่อหลังเสื้อ', 'เบอร์', 'เจ้าของ', 'เบอร์โทร', 'เลขที่', 'ประเภท', 'รอบ', 'การรับ', 'สถานะ'],
-    ...sortItems(items).map(i => [shirtNameOf(EV, i.shirt), i.size, i.name || '', i.num || '', i.owner, i.phone, i.code, i.kind, i.round, i.delivery, STATUS[i.status]?.label])],
+  add('รายการเสื้อ', [['แบบ', 'ไซส์', 'ชื่อหลังเสื้อ', 'เบอร์', 'เจ้าของ', 'เบอร์โทร', 'เลขที่', 'ประเภท', 'รอบที่เลือก', 'การรับ', 'สถานะ', 'รอบผลิต'],
+    ...sortItems(items).map(i => [shirtNameOf(EV, i.shirt), i.size, i.name || '', i.num || '', i.owner, i.phone, i.code, i.kind, i.round, i.delivery, STATUS[i.status]?.label, i.batch || ''])],
     [16, 6, 14, 6, 22, 13, 11, 12, 10, 10, 12]);
-  add('ผู้สมัคร', [['เลขที่', 'สมัครเมื่อ', 'ชื่อ', 'นามสกุล', 'ชื่อในงาน', 'อายุ', 'เบอร์โทร', 'สมัครแทนโดย', 'Platform', 'ID', 'แบบเสื้อ', 'ไซส์', 'ชื่อหลัง', 'เบอร์', 'เสื้อเพิ่ม', 'ยอด', 'สถานะ', 'ลิงก์สลิป', 'หมายเหตุ'],
+  add('ผู้สมัคร', [['เลขที่', 'สมัครเมื่อ', 'ชื่อ', 'นามสกุล', 'ชื่อในงาน', 'อายุ', 'เบอร์โทร', 'สมัครแทนโดย', 'Platform', 'ID', 'แบบเสื้อ', 'ไซส์', 'ชื่อหลัง', 'เบอร์', 'เสื้อเพิ่ม', 'ยอด', 'สถานะ', 'ลิงก์สลิป', 'หมายเหตุ', 'รอบผลิต'],
     ...REGS.map(r => [r.code, fmtDate(r.createdAt), r.firstName, r.lastName, r.nickname, r.age ?? '', r.phone, r.registeredBy || '', r.platform, r.platformId,
       r.shirtSize ? shirtNameOf(EV, r.shirt) : '', r.shirtSize, r.shirtName, r.shirtNumber,
       (r.extras || []).map(e => `${shirtNameOf(EV, e.shirt)}/${e.size}/${e.name || '-'}/#${e.num || '-'}`).join(' | '),
-      r.total, STATUS[r.status]?.label, r.slipUrl || '', r.note || ''])],
+      r.total, STATUS[r.status]?.label, r.slipUrl || '', r.note || '', r.batch || ''])],
     [10, 14, 14, 14, 12, 5, 13, 14, 9, 14, 14, 6, 12, 6, 30, 7, 12, 30, 20]);
-  add('สั่งเสื้อ', [['เลขที่', 'สั่งเมื่อ', 'ชื่อ', 'นามสกุล', 'เบอร์โทร', 'Platform', 'ID', 'รอบ', 'จำนวน', 'รายการ', 'การรับ', 'ที่อยู่จัดส่ง', 'ยอด', 'สถานะ', 'ส่ง/มอบแล้ว', 'ลิงก์สลิป', 'หมายเหตุ'],
+  add('สั่งเสื้อ', [['เลขที่', 'สั่งเมื่อ', 'ชื่อ', 'นามสกุล', 'เบอร์โทร', 'Platform', 'ID', 'รอบ', 'จำนวน', 'รายการ', 'การรับ', 'ที่อยู่จัดส่ง', 'ยอด', 'สถานะ', 'ส่ง/มอบแล้ว', 'ลิงก์สลิป', 'หมายเหตุ', 'รอบผลิต'],
     ...ORDERS.map(o => [o.code, fmtDate(o.createdAt), o.firstName, o.lastName, o.phone, o.platform, o.platformId, (EV.shirtRounds || [])[o.round]?.label || '',
       o.items.length, o.items.map(it => `${shirtNameOf(EV, it.shirt)}/${it.size}/${it.name || '-'}/#${it.num || '-'}`).join(' | '),
       o.delivery === 'ship' ? 'ส่งพัสดุ' : 'รับในงาน', o.address ? `${o.address.name} ${o.address.address} ${o.address.phone}` : '',
-      o.total, STATUS[o.status]?.label, o.handedOver ? 'ใช่' : '', o.slipUrl || '', o.note || ''])],
+      o.total, STATUS[o.status]?.label, o.handedOver ? 'ใช่' : '', o.slipUrl || '', o.note || '', o.batch || ''])],
     [11, 14, 14, 14, 13, 9, 14, 8, 6, 40, 9, 40, 7, 12, 8, 30, 20]);
   const d = new Date(), stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}-${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}`;
-  X.writeFile(wb, `${EID}-${stamp}.xlsx`);
+  const tag = ['all', 'none'].includes(shirtF.batch) ? (shirtF.batch === 'none' && batchesOf().length ? '-รอผลิต' : '') : `-ผลิตรอบ${shirtF.batch}`;
+  X.writeFile(wb, `${EID}${tag}-${stamp}.xlsx`);
 }
 
 // ── ผู้สนับสนุน ───────────────────────────────────────
@@ -832,8 +911,10 @@ function renderSettings() {
     </div>
     <div class="admin-section"><div class="admin-title">รอบสั่งเสื้อ</div>
       ${D.shirtRounds.map((r, i) => `<div class="item-box"><div class="frow">${txt(`shirtRounds.${i}.label`, 'ชื่อรอบ')}${txt(`shirtRounds.${i}.orderBy`, 'สั่งภายใน')}</div>
-        <div class="img-field">${txt(`shirtRounds.${i}.receive`, 'ได้รับเมื่อ')}<button class="link-btn danger" data-rm="shirtRounds:${i}">ลบ</button></div></div>`).join('')}
+        <div class="img-field">${txt(`shirtRounds.${i}.receive`, 'ได้รับเมื่อ')}<button class="link-btn danger" data-rm="shirtRounds:${i}">ลบ</button></div>
+        ${chk(`shirtRounds.${i}.closed`, 'ปิดรับรอบนี้แล้ว (ลูกค้าเลือกไม่ได้)')}</div>`).join('')}
       <button class="bulk-btn-sm" data-addrow="shirtRounds">+ เพิ่มรอบ</button>
+      <div class="muted-sm" style="margin-top:.4rem">⚠️ อย่าลบรอบที่มีคนสั่งแล้ว ให้ติ๊ก "ปิดรับรอบนี้แล้ว" แทน</div>
     </div>
     <div class="admin-section"><div class="admin-title">การชำระเงิน</div>
       <div class="frow">${txt('bankName', 'ธนาคาร')}${txt('bankAccount', 'เลขบัญชี + ชื่อบัญชี')}</div>
