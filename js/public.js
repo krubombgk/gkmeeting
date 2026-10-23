@@ -4,7 +4,7 @@ import {
 } from './fb.js';
 import { FALLBACK_EVENT_ID } from './config.js';
 import {
-  ref, STATUS, esc, mdBold, sizeSurcharge, shirtPrice, shirtNameOf, regTotal, orderTotal,
+  ref, STATUS, ATTEND, esc, mdBold, sizeSurcharge, shirtPrice, shirtNameOf, regTotal, orderTotal,
   deadlineMs, fmtLeft, fmtDate, normPhone, validPhone, nameKey, phoneHash, codeOf,
   uploadImage, toast, viewImg, shirtSVG
 } from './common.js';
@@ -599,6 +599,16 @@ async function searchStatus() {
     out.innerHTML =
       (regs.length ? `<div class="status-section-label">การสมัครร่วมงาน</div>${regs.map(regCard).join('')}` : '') +
       (orders.length ? `<div class="status-section-label">การสั่งเสื้อ</div>${orders.map(orderCard).join('')}` : '');
+    out.querySelectorAll('[data-att]').forEach(b => b.onclick = async () => {
+      const v = b.dataset.att;
+      if (v === 'no' && !confirm('ยืนยันว่ามาร่วมงานไม่ได้? ที่นั่งอาจถูกส่งต่อให้คิวสำรอง')) return;
+      b.disabled = true;
+      try {
+        await updateDoc(ref.reg(EID, b.dataset.id), { attend: v, attendAt: serverTimestamp(), attendBy: 'self' });
+        toast(v === 'yes' ? 'ยืนยันแล้ว แล้วเจอกันในงานครับ ⚽' : 'รับทราบครับ ขอบคุณที่แจ้ง');
+        searchStatus();
+      } catch (e) { console.error(e); toast('บันทึกไม่สำเร็จ กรุณาลองใหม่'); b.disabled = false; }
+    });
     out.querySelectorAll('[data-slip]').forEach(b => b.onclick = () => {
       const d = docs.find(x => x && x.id === b.dataset.slip);
       openUpload({ id: d.id, type: d.t, name: `${d.firstName} ${d.lastName}`, total: d.total }, searchStatus);
@@ -632,8 +642,19 @@ function regCard(r) {
     <div class="status-card-name">${esc(r.firstName)} ${esc(r.lastName)}${r.nickname ? ` <span class="muted-sm">(${esc(r.nickname)})</span>` : ''}</div>
     <div class="status-card-detail">${r.shirtSize ? `${esc(shirtNameOf(EV, r.shirt))} · ไซส์ ${esc(r.shirtSize)} · ` : ''}฿${r.total}${extras}</div>
     ${slipRow(r, true)}
+    ${r.status === 'confirmed' ? attendBox(r) : ''}
     ${r.status === 'confirmed' || r.status === 'pending' || r.status === 'slip' ? lineBox() : ''}
   </div>`;
+}
+function attendBox(r) {
+  const v = r.attend;
+  const done = v === 'yes' || v === 'no';
+  return `<div class="status-divider"></div><div class="attend-box${done ? ' done ' + v : ''}">
+    <div class="attend-q">${v === 'yes' ? '✅ คุณยืนยันว่า <strong>มาร่วมงาน</strong> แล้ว ขอบคุณครับ' : v === 'no' ? '❌ คุณแจ้งว่า <strong>มาไม่ได้</strong> — ทีมงานรับทราบแล้วครับ' : `📣 ${EV.dateText ? 'วันที่ ' + esc(EV.dateText) + ' ' : 'วันงาน '}จะมาร่วมงานไหมครับ?`}</div>
+    <div class="attend-btns">
+      <button class="att-btn yes${v === 'yes' ? ' active' : ''}" data-att="yes" data-id="${esc(r.id)}">✅ มาแน่นอน</button>
+      <button class="att-btn no${v === 'no' ? ' active' : ''}" data-att="no" data-id="${esc(r.id)}">❌ มาไม่ได้</button>
+    </div>${done ? '<div class="muted-sm" style="margin-top:.3rem">เปลี่ยนคำตอบได้ ถ้าแผนเปลี่ยน</div>' : ''}</div>`;
 }
 function orderCard(o) {
   const rd = (EV.shirtRounds || [])[o.round];

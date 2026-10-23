@@ -80,6 +80,14 @@ export const STATUS = {
   reserve:   { label: 'ตัวสำรอง',    badge: 'badge-reserve' },
   cancelled: { label: 'ยกเลิก',      badge: 'badge-cancel' }
 };
+export const ATTEND = {
+  '':          { label: 'ยังไม่ตอบ',        badge: 'badge-wait' },
+  contacted:   { label: 'ติดต่อแล้ว รอตอบ', badge: 'badge-slip' },
+  yes:         { label: 'มาแน่นอน',         badge: 'badge-ok' },
+  no:          { label: 'แจ้งไม่มา',         badge: 'badge-cancel' },
+  unreachable: { label: 'ติดต่อไม่ได้',      badge: 'badge-reserve' }
+};
+export const attendOf = r => ATTEND[r.attend] ? r.attend || '' : '';
 export const HOLDS_SEAT = s => s === 'pending' || s === 'slip' || s === 'confirmed';
 // สถานะ → ช่องใน counters
 export const counterKey = s => (s === 'pending' || s === 'slip') ? 'pending' : (s === 'confirmed' ? 'confirmed' : (s === 'reserve' ? 'reserve' : null));
