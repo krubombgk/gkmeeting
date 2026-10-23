@@ -168,7 +168,7 @@ function renderOverview() {
     ${over.length ? `<div class="alert alert-red" data-goto="regs:overdue">⏰ เกินกำหนดแนบสลิป <strong>${over.length}</strong> คน →</div>` : ''}
     ${free > 0 && q.length ? `<div class="alert alert-gold">🪑 ว่าง <strong>${free}</strong> ที่ · คิวสำรองถัดไป: <strong>${esc(fullName(q[0]))}</strong> ${tel(q[0].phone)}
        <button class="mini-btn" data-act="promote" data-id="${q[0].id}">เลื่อนขึ้น</button></div>` : ''}
-    ${attNo.length ? `<div class="alert alert-red" data-goto="regs:att-no">❌ แจ้งว่าไม่มาวันงาน <strong>${attNo.length}</strong> คน (ยังไม่ได้ยกเลิก) →</div>` : ''}
+    ${attNo.length ? `<div class="alert alert-red" data-goto="regs:att-no">❌ แจ้งว่าไม่มาวันงาน <strong>${attNo.length}</strong> คน${attNo.filter(r => r.shirtSize && !r.shipAddress).length ? ` · ยังไม่มีที่อยู่จัดส่ง ${attNo.filter(r => r.shirtSize && !r.shipAddress).length} คน` : ''} →</div>` : ''}
     ${drift ? `<div class="alert alert-red">⚠️ ตัวนับที่นั่งไม่ตรงกับรายชื่อจริง <button class="mini-btn" id="fix-counters">ซ่อมตัวนับ</button></div>` : ''}
     <div class="kpi-grid">
       ${kpi('ที่นั่ง', `${seatsUsed()}/${EV.quota}`, 'var(--dark)')}
@@ -280,6 +280,7 @@ function regCard(r, qpos) {
       </div>
       ${r.slipUrl ? `<img class="slip-thumb" src="${esc(r.slipUrl)}" data-view="${esc(r.slipUrl)}" alt="สลิป" title="ดูสลิป">` : ''}
     </div>
+    ${r.shipAddress ? `<div class="ship-line">📦 จัดส่ง: ${esc(r.shipAddress.name)} · ${tel(r.shipAddress.phone)} · ${esc(r.shipAddress.address)}${r.handedOver ? ' · <strong>ส่งแล้ว</strong>' : ''}</div>` : ''}
     ${HOLDS_SEAT(r.status) ? attendRow(r) : ''}
     <div class="rcard-acts">${acts.join('')}</div>
   </div>`;
@@ -532,6 +533,10 @@ function editModal(r) {
     <div class="frow"><div class="field"><label>ยอดชำระ (฿)</label><input id="e-total" type="number" value="${esc(r.total)}"></div>
       <div class="field"><label>&nbsp;</label><button class="cfg-upload-btn" id="e-calc" style="width:100%">คำนวณใหม่</button></div></div>
     <div class="field"><label>หมายเหตุ</label><input id="e-note" value="${esc(r.note)}"></div>
+    <div class="slabel">ที่อยู่จัดส่งเสื้อ (ถ้าไม่มารับในงาน)</div>
+    <div class="frow"><div class="field"><label>ชื่อผู้รับ</label><input id="e-sname" value="${esc(r.shipAddress?.name || '')}"></div>
+      <div class="field"><label>เบอร์ผู้รับ</label><input id="e-sphone" value="${esc(r.shipAddress?.phone || '')}"></div></div>
+    <div class="field"><label>ที่อยู่</label><textarea id="e-saddr" rows="2">${esc(r.shipAddress?.address || '')}</textarea></div>
     ${(r.extras || []).length ? `<div class="muted-sm">เสื้อเพิ่ม ${r.extras.length} ตัว (แก้ไม่ได้ในหน้านี้)</div>` : ''}
     <button class="upload-confirm-btn" id="e-save">บันทึก</button>
     <button class="act-btn danger" data-act="del" data-id="${esc(r.id)}" style="width:100%;margin-bottom:.5rem">🗑 ลบถาวร</button>`, m => {
@@ -546,7 +551,8 @@ function editModal(r) {
         nickname: $('e-nick').value.trim(), registeredBy: $('e-by').value.trim(),
         platform: $('e-pf').value.trim(), platformId: $('e-pid').value.trim(),
         shirt: Number($('e-shirt').value), shirtSize: $('e-size').value, shirtName: $('e-sn').value.trim().toUpperCase(),
-        shirtNumber: $('e-num').value.trim(), total: Number($('e-total').value) || 0, note: $('e-note').value.trim()
+        shirtNumber: $('e-num').value.trim(), total: Number($('e-total').value) || 0, note: $('e-note').value.trim(),
+        shipAddress: $('e-saddr').value.trim() ? { name: $('e-sname').value.trim(), address: $('e-saddr').value.trim(), phone: $('e-sphone').value.trim() } : null
       };
       if (r.preReg && upd.shirtSize) upd.preReg = false;
       if (r.batch && (upd.shirt !== Number(r.shirt) || upd.shirtSize !== r.shirtSize || upd.shirtName !== (r.shirtName || '') || upd.shirtNumber !== (r.shirtNumber || ''))
@@ -716,7 +722,8 @@ const DESK_FILTERS = [
   ['notArrived', '⏳ ยังไม่มา', e => e.t === 'r' && !e.d.checkedInAt],
   ['arrived', '🏁 มาแล้ว', e => e.t === 'r' && e.d.checkedInAt],
   ['ready', '👕 พร้อมมอบ ยังไม่รับ', e => hasShirt(e) && e.d.batch && !e.d.handedOver],
-  ['later', '📦 รับเสื้อย้อนหลัง', e => hasShirt(e) && !e.d.batch && !e.d.handedOver],
+  ['later', '⏳ รับเสื้อย้อนหลัง', e => hasShirt(e) && !e.d.batch && !e.d.handedOver],
+  ['ship', '📦 ต้องจัดส่ง', e => hasShirt(e) && e.d.shipAddress && !e.d.handedOver],
   ['given', '✅ รับเสื้อแล้ว', e => e.d.handedOver]
 ];
 function renderDesk() {
@@ -726,7 +733,7 @@ function renderDesk() {
       <input class="search-in desk-search" id="desk-q" placeholder="🔍 พิมพ์ชื่อ / ชื่อเล่น / เลขสมัคร / เบอร์โทร" value="${esc(deskQ)}" autocomplete="off">
       <div class="sf-bar" id="desk-filters"></div>
       <div id="desk-list"></div>
-      <button class="bulk-btn-sm" id="desk-later-xls" style="margin-top:.75rem">⬇ Excel รายชื่อรับเสื้อย้อนหลัง</button>`;
+      <button class="bulk-btn-sm" id="desk-later-xls" style="margin-top:.75rem">⬇ Excel รายชื่อจัดส่ง + รับเสื้อย้อนหลัง</button>`;
     $('desk-q').oninput = e => { deskQ = e.target.value; renderDesk(); };
     $('desk-later-xls').onclick = exportLater;
   }
@@ -756,7 +763,8 @@ function deskCard(e) {
       <span class="desk-size">${esc(i.size)}</span></div>`;
   }).join('');
   const prod = !e.items.length ? '' : d.handedOver
-    ? `<div class="desk-prod given">✅ รับเสื้อแล้ว ${d.handedAt ? fmtDate(d.handedAt) : ''}</div>`
+    ? `<div class="desk-prod given">✅ ${d.shipAddress ? 'ส่งพัสดุแล้ว' : 'รับเสื้อแล้ว'} ${d.handedAt ? fmtDate(d.handedAt) : ''}</div>`
+    : d.shipAddress ? `<div class="desk-prod ship">📦 ไม่มาร่วมงาน — จัดส่งไปที่ ${esc(d.shipAddress.name)} · ${esc(d.shipAddress.phone)}<br><span style="font-weight:400">${esc(d.shipAddress.address)}</span>${d.batch ? '' : '<br>⏳ ยังไม่ได้ผลิต'}</div>`
     : d.batch ? `<div class="desk-prod ready">🏭 ผลิตรอบ ${d.batch} — มอบได้เลย</div>`
     : `<div class="desk-prod later">⏳ ยังไม่ได้ผลิต — รับเสื้อย้อนหลัง</div>`;
   const youth = isReg && isYouth(d);
@@ -773,7 +781,7 @@ function deskCard(e) {
       ${isReg ? (d.checkedInAt ? `<button class="act-btn" data-act="checkin" data-id="${esc(d.id)}">🏁 มาถึง ${fmtDate(d.checkedInAt).split(' ').pop()} · ยกเลิก</button>`
         : `<button class="act-btn ok big" data-act="checkin" data-id="${esc(d.id)}">🏁 เช็คอิน มาถึงแล้ว</button>`) : ''}
       ${e.items.length ? (d.handedOver ? `<button class="act-btn" data-act="handover" data-t="${e.t}" data-id="${esc(d.id)}">↺ ยังไม่ได้รับเสื้อ</button>`
-        : `<button class="act-btn ${d.batch ? 'ok' : ''} big" data-act="handover" data-t="${e.t}" data-id="${esc(d.id)}">👕 มอบเสื้อแล้ว</button>`) : ''}
+        : `<button class="act-btn ${d.batch ? 'ok' : ''} big" data-act="handover" data-t="${e.t}" data-id="${esc(d.id)}">${d.shipAddress ? '📦 ส่งพัสดุแล้ว' : '👕 มอบเสื้อแล้ว'}</button>`) : ''}
     </div></div>`;
 }
 Object.assign(ACTIONS, {
@@ -793,12 +801,16 @@ Object.assign(ACTIONS, {
 async function exportLater() {
   let X;
   try { X = await loadXLSX(); } catch { return toast('โหลดตัวสร้าง Excel ไม่สำเร็จ'); }
-  const later = deskEntries().filter(e => hasShirt(e) && !e.d.batch && !e.d.handedOver);
-  const rows = later.flatMap(e => e.items.map(i => [e.d.code, fullName(e.d), e.d.nickname || '', e.d.phone, shirtNameOf(EV, i.shirt), i.size, i.name || '', i.num || '', i.kind]));
-  const wb = X.utils.book_new(), ws = X.utils.aoa_to_sheet([['เลขที่', 'ชื่อ', 'ชื่อเล่น', 'เบอร์โทร', 'แบบเสื้อ', 'ไซส์', 'ชื่อหลัง', 'เบอร์', 'ประเภท'], ...rows]);
-  ws['!cols'] = [10, 22, 12, 13, 16, 6, 12, 6, 12].map(w => ({ wch: w }));
-  X.utils.book_append_sheet(wb, ws, 'รับเสื้อย้อนหลัง');
-  X.writeFile(wb, `${EID}-รับเสื้อย้อนหลัง.xlsx`);
+  const all = deskEntries();
+  const head = ['เลขที่', 'ชื่อ', 'ชื่อเล่น', 'เบอร์โทร', 'แบบเสื้อ', 'ไซส์', 'ชื่อหลัง', 'เบอร์', 'ประเภท', 'รอบผลิต', 'ผู้รับ', 'เบอร์ผู้รับ', 'ที่อยู่จัดส่ง'];
+  const rowsOf = list => list.flatMap(e => e.items.map(i => [e.d.code, fullName(e.d), e.d.nickname || '', e.d.phone, shirtNameOf(EV, i.shirt), i.size, i.name || '', i.num || '', i.kind,
+    e.d.batch || 'ยังไม่ผลิต', e.d.shipAddress?.name || '', e.d.shipAddress?.phone || '', e.d.shipAddress?.address || '']));
+  const widths = [10, 22, 12, 13, 16, 6, 12, 6, 12, 9, 20, 13, 50].map(w => ({ wch: w }));
+  const wb = X.utils.book_new();
+  const add = (name, list) => { const ws = X.utils.aoa_to_sheet([head, ...rowsOf(list)]); ws['!cols'] = widths; X.utils.book_append_sheet(wb, ws, name); };
+  add('ต้องจัดส่ง', all.filter(e => hasShirt(e) && e.d.shipAddress && !e.d.handedOver));
+  add('รับเสื้อย้อนหลัง', all.filter(e => hasShirt(e) && !e.d.shipAddress && !e.d.batch && !e.d.handedOver));
+  X.writeFile(wb, `${EID}-จัดส่ง-รับย้อนหลัง.xlsx`);
 }
 
 // ── ปิดรอบผลิต ───────────────────────────────────────

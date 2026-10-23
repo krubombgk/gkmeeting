@@ -605,9 +605,23 @@ async function searchStatus() {
       b.disabled = true;
       try {
         await updateDoc(ref.reg(EID, b.dataset.id), { attend: v, attendAt: serverTimestamp(), attendBy: 'self' });
-        toast(v === 'yes' ? 'ยืนยันแล้ว แล้วเจอกันในงานครับ ⚽' : 'รับทราบครับ ขอบคุณที่แจ้ง');
+        toast(v === 'yes' ? 'ยืนยันแล้ว แล้วเจอกันในงานครับ ⚽' : 'รับทราบครับ กรอกที่อยู่ด้านล่างเพื่อรับเสื้อทางไปรษณีย์', 3500);
         searchStatus();
       } catch (e) { console.error(e); toast('บันทึกไม่สำเร็จ กรุณาลองใหม่'); b.disabled = false; }
+    });
+    out.querySelectorAll('[data-ship-edit]').forEach(b => b.onclick = () => { shipEditing.add(b.dataset.shipEdit); searchStatus(); });
+    out.querySelectorAll('[data-ship-save]').forEach(b => b.onclick = async () => {
+      const box = out.querySelector(`[data-ship-form="${b.dataset.shipSave}"]`);
+      const v = k => box.querySelector(`[data-sf="${k}"]`).value.trim();
+      const addr = { name: v('name'), address: v('address'), phone: v('phone') };
+      if (!addr.name || addr.address.length < 10 || !validPhone(addr.phone)) return toast('กรุณากรอกชื่อ ที่อยู่ และเบอร์โทรให้ครบถ้วน');
+      b.disabled = true; b.textContent = 'กำลังบันทึก...';
+      try {
+        await updateDoc(ref.reg(EID, b.dataset.shipSave), { shipAddress: addr, shipAt: serverTimestamp() });
+        shipEditing.delete(b.dataset.shipSave);
+        toast('บันทึกที่อยู่แล้ว ทีมงานจะจัดส่งเสื้อให้หลังวันงานครับ 📦', 3500);
+        searchStatus();
+      } catch (e) { console.error(e); toast('บันทึกไม่สำเร็จ กรุณาลองใหม่'); b.disabled = false; b.textContent = 'บันทึกที่อยู่จัดส่ง'; }
     });
     out.querySelectorAll('[data-slip]').forEach(b => b.onclick = () => {
       const d = docs.find(x => x && x.id === b.dataset.slip);
@@ -654,8 +668,23 @@ function attendBox(r) {
     <div class="attend-btns">
       <button class="att-btn yes${v === 'yes' ? ' active' : ''}" data-att="yes" data-id="${esc(r.id)}">✅ มาแน่นอน</button>
       <button class="att-btn no${v === 'no' ? ' active' : ''}" data-att="no" data-id="${esc(r.id)}">❌ มาไม่ได้</button>
-    </div>${done ? '<div class="muted-sm" style="margin-top:.3rem">เปลี่ยนคำตอบได้ ถ้าแผนเปลี่ยน</div>' : ''}</div>`;
+    </div>${done ? '<div class="muted-sm" style="margin-top:.3rem">เปลี่ยนคำตอบได้ ถ้าแผนเปลี่ยน</div>' : ''}
+    ${v === 'no' && r.shirtSize ? shipBox(r) : ''}</div>`;
 }
+function shipBox(r) {
+  const a = r.shipAddress;
+  if (a && !shipEditing.has(r.id)) return `<div class="ship-box saved">
+    <div class="slabel" style="margin-bottom:.3rem">📦 ที่อยู่จัดส่งเสื้อหลังวันงาน</div>
+    <div class="ship-addr">${esc(a.name)} · ${esc(a.phone)}<br>${esc(a.address)}</div>
+    <button class="link-btn" data-ship-edit="${esc(r.id)}">แก้ไขที่อยู่</button></div>`;
+  return `<div class="ship-box" data-ship-form="${esc(r.id)}">
+    <div class="slabel" style="margin-bottom:.3rem">📦 กรอกที่อยู่สำหรับจัดส่งเสื้อหลังวันงาน</div>
+    <div class="field"><label>ชื่อผู้รับ <span class="req">*</span></label><input data-sf="name" value="${esc(a?.name || `${r.firstName} ${r.lastName}`)}"></div>
+    <div class="field"><label>ที่อยู่ <span class="req">*</span></label><textarea data-sf="address" rows="3" placeholder="บ้านเลขที่ ถนน ตำบล อำเภอ จังหวัด รหัสไปรษณีย์">${esc(a?.address || '')}</textarea></div>
+    <div class="field"><label>เบอร์โทรผู้รับ <span class="req">*</span></label><input data-sf="phone" type="tel" value="${esc(a?.phone || r.phone)}"></div>
+    <button class="submit-btn" data-ship-save="${esc(r.id)}" style="height:44px">บันทึกที่อยู่จัดส่ง</button></div>`;
+}
+const shipEditing = new Set();
 function orderCard(o) {
   const rd = (EV.shirtRounds || [])[o.round];
   return `<div class="status-card">
