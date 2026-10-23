@@ -724,8 +724,12 @@ const DESK_FILTERS = [
   ['ready', '👕 พร้อมมอบ ยังไม่รับ', e => hasShirt(e) && e.d.batch && !e.d.handedOver],
   ['later', '⏳ รับเสื้อย้อนหลัง', e => hasShirt(e) && !e.d.batch && !e.d.handedOver],
   ['ship', '📦 ต้องจัดส่ง', e => hasShirt(e) && e.d.shipAddress && !e.d.handedOver],
-  ['given', '✅ รับเสื้อแล้ว', e => e.d.handedOver]
+  ['given', '✅ รับเสื้อแล้ว', e => e.d.handedOver],
+  ['noDraw', '🎲 มาแล้ว ยังไม่จับฉลาก', e => e.t === 'r' && e.d.checkedInAt && !e.d.drawNo],
+  ['drawn', '🎲 เรียงตามลำดับฉลาก', e => e.t === 'r' && e.d.drawNo]
 ];
+const drawRegs = () => REGS.filter(r => HOLDS_SEAT(r.status) && r.drawNo).sort((a, b) => a.drawNo - b.drawNo);
+const drawOwner = (n, exceptId) => REGS.find(r => r.status !== 'cancelled' && r.drawNo === n && r.id !== exceptId);
 function renderDesk() {
   if (!$('desk-list')) {
     root.innerHTML = `
@@ -733,25 +737,57 @@ function renderDesk() {
       <input class="search-in desk-search" id="desk-q" placeholder="🔍 พิมพ์ชื่อ / ชื่อเล่น / เลขสมัคร / เบอร์โทร" value="${esc(deskQ)}" autocomplete="off">
       <div class="sf-bar" id="desk-filters"></div>
       <div id="desk-list"></div>
-      <button class="bulk-btn-sm" id="desk-later-xls" style="margin-top:.75rem">⬇ Excel รายชื่อจัดส่ง + รับเสื้อย้อนหลัง</button>`;
+      <div class="btn-row" style="margin-top:.75rem"><button class="add-btn-sm" id="draw-copy">📋 คัดลอกรายชื่อเรียงลำดับฉลาก</button><button class="add-btn-sm" id="draw-xls">⬇ Excel ลำดับฉลาก</button></div>
+      <button class="bulk-btn-sm" id="desk-later-xls" style="margin-top:.5rem">⬇ Excel รายชื่อจัดส่ง + รับเสื้อย้อนหลัง</button>`;
     $('desk-q').oninput = e => { deskQ = e.target.value; renderDesk(); };
     $('desk-later-xls').onclick = exportLater;
+    $('draw-copy').onclick = copyDrawList;
+    $('draw-xls').onclick = exportDraw;
   }
+  // กำลังพิมพ์เลขฉลากอยู่ → ยังไม่วาดรายการใหม่ (กันค่าที่พิมพ์หาย)
+  if (document.activeElement && document.activeElement.dataset && document.activeElement.dataset.drawInput) { deskPendingRender = true; return; }
   const all = deskEntries(), regsE = all.filter(e => e.t === 'r');
   const shirtE = all.filter(hasShirt);
   $('desk-stats').innerHTML = [
     ['มาถึงแล้ว', `${regsE.filter(e => e.d.checkedInAt).length}/${regsE.length}`, '#185FA5'],
     ['มอบเสื้อแล้ว', `${shirtE.filter(e => e.d.handedOver).length}/${shirtE.filter(e => e.d.batch).length}`, '#1D9E75'],
-    ['รับย้อนหลัง', shirtE.filter(e => !e.d.batch && !e.d.handedOver).length, '#854F0B']
+    ['รับย้อนหลัง', shirtE.filter(e => !e.d.batch && !e.d.handedOver).length, '#854F0B'],
+    ['จับฉลากแล้ว', `${regsE.filter(e => e.d.drawNo).length}/${regsE.filter(e => e.d.checkedInAt).length}`, '#4A2C8A']
   ].map(([l, n, c]) => `<div class="summ-card"><div class="summ-n" style="color:${c}">${n}</div><div class="summ-l">${l}</div></div>`).join('');
   $('desk-filters').innerHTML = DESK_FILTERS.map(([k, l, f]) => `<button class="sf-btn${deskF === k ? ' active' : ''}" data-f="${k}">${l} <span class="cnt">${all.filter(f).length}</span></button>`).join('');
   $('desk-filters').querySelectorAll('[data-f]').forEach(b => b.onclick = () => { deskF = b.dataset.f; renderDesk(); });
   const f = DESK_FILTERS.find(x => x[0] === deskF)[2];
   const qs = deskQ.trim().toLowerCase(), qd = normPhone(qs);
   const match = e => !qs || [fullName(e.d), e.d.nickname || '', e.d.code].join(' ').toLowerCase().includes(qs) || (qd.length >= 3 && normPhone(e.d.phone).includes(qd));
-  const list = all.filter(f).filter(match).sort((a, b) => (a.t === b.t ? 0 : a.t === 'r' ? -1 : 1) || fullName(a.d).localeCompare(fullName(b.d), 'th'));
-  $('desk-list').innerHTML = list.length ? list.slice(0, 60).map(deskCard).join('') + (list.length > 60 ? `<div class="muted-sm" style="text-align:center">แสดง 60 จาก ${list.length} — พิมพ์ค้นหาเพื่อกรอง</div>` : '')
-    : '<div class="status-empty">ไม่พบ</div>';
+  const list = all.filter(f).filter(match).sort(deskF === 'drawn' ? (a, b) => a.d.drawNo - b.d.drawNo
+    : (a, b) => (a.t === b.t ? 0 : a.t === 'r' ? -1 : 1) || fullName(a.d).localeCompare(fullName(b.d), 'th'));
+  let gapInfo = '';
+  if (deskF === 'drawn') {
+    const used = new Set(drawRegs().map(r => r.drawNo)), max = Math.max(EV.quota || 0, ...used, 0);
+    const gaps = []; for (let n = 1; n <= max; n++) if (!used.has(n)) gaps.push(n);
+    gapInfo = `<div class="draw-gaps">เลขที่ยังไม่มีคน (1–${max}): ${gaps.length ? gaps.join(', ') : 'ครบทุกเลข'}</div>`;
+  }
+  $('desk-list').innerHTML = gapInfo + (list.length ? list.slice(0, 60).map(deskCard).join('') + (list.length > 60 ? `<div class="muted-sm" style="text-align:center">แสดง 60 จาก ${list.length} — พิมพ์ค้นหาเพื่อกรอง</div>` : '')
+    : '<div class="status-empty">ไม่พบ</div>');
+}
+let deskPendingRender = false;
+root.addEventListener('keydown', e => {
+  const inp = e.target.closest && e.target.closest('[data-draw-input]');
+  if (inp && e.key === 'Enter') { e.preventDefault(); ACTIONS.draw(inp.dataset.drawInput); }
+});
+document.addEventListener('focusout', e => {
+  if (e.target.dataset && e.target.dataset.drawInput !== undefined && deskPendingRender) { deskPendingRender = false; setTimeout(() => tab === 'desk' && renderDesk(), 50); }
+});
+function drawRow(d) {
+  const dup = d.drawNo && drawOwner(d.drawNo, d.id);
+  return `<div class="draw-row${d.drawNo ? ' set' : ''}${dup ? ' dup' : ''}">
+    <span class="draw-lbl">🎲 ลำดับที่จับได้</span>
+    ${d.drawNo ? `<span class="draw-no">${d.drawNo}</span>` : ''}
+    <input type="number" inputmode="numeric" min="1" max="999" placeholder="${d.drawNo ? 'แก้เลข' : 'ใส่เลข'}" data-draw-input="${esc(d.id)}">
+    <button class="act-btn ${d.drawNo ? '' : 'ok'}" data-act="draw" data-id="${esc(d.id)}">${d.drawNo ? 'แก้ไข' : 'บันทึก'}</button>
+    ${d.drawNo ? `<button class="link-btn danger" data-act="drawclear" data-id="${esc(d.id)}">ลบ</button>` : ''}
+    ${dup ? `<div class="draw-warn">⚠️ เลขซ้ำกับ ${esc(fullName(dup))}</div>` : ''}
+  </div>`;
 }
 function deskCard(e) {
   const d = e.d, isReg = e.t === 'r';
@@ -777,6 +813,7 @@ function deskCard(e) {
     </div>
     ${shirtRows ? `<div class="desk-shirts">${shirtRows}</div>${prod}` : '<div class="muted-sm">ไม่มีข้อมูลเสื้อ</div>'}
     ${d.note ? `<div class="note-line">📝 ${esc(d.note)}</div>` : ''}
+    ${isReg && (d.checkedInAt || d.drawNo) ? drawRow(d) : ''}
     <div class="desk-acts">
       ${isReg ? (d.checkedInAt ? `<button class="act-btn" data-act="checkin" data-id="${esc(d.id)}">🏁 มาถึง ${fmtDate(d.checkedInAt).split(' ').pop()} · ยกเลิก</button>`
         : `<button class="act-btn ok big" data-act="checkin" data-id="${esc(d.id)}">🏁 เช็คอิน มาถึงแล้ว</button>`) : ''}
@@ -785,6 +822,21 @@ function deskCard(e) {
     </div></div>`;
 }
 Object.assign(ACTIONS, {
+  async draw(id) {
+    const inp = root.querySelector(`[data-draw-input="${id}"]`), r = findReg(id);
+    const v = String(inp ? inp.value : '').trim();
+    if (!/^\d{1,3}$/.test(v) || Number(v) < 1) { toast('กรุณาใส่ลำดับเป็นตัวเลข'); inp && inp.focus(); return; }
+    const n = Number(v), other = drawOwner(n, id);
+    if (other) { toast(`เลข ${n} เป็นของ ${fullName(other)} แล้ว — ตรวจฉลากอีกครั้ง`, 4500); inp.select(); return; }
+    inp.blur();
+    await updateDoc(ref.reg(EID, id), { drawNo: n, drawAt: Timestamp.fromMillis(now()), drawBy: USER.email });
+    toast(`🎲 ${r.nickname || r.firstName} = ลำดับ ${n}`);
+  },
+  async drawclear(id) {
+    const r = findReg(id);
+    if (!confirm(`ลบลำดับ ${r.drawNo} ของ ${fullName(r)}?`)) return;
+    await updateDoc(ref.reg(EID, id), { drawNo: null, drawAt: null, drawBy: null });
+  },
   async checkin(id) {
     const r = findReg(id);
     await updateDoc(ref.reg(EID, id), { checkedInAt: r.checkedInAt ? null : Timestamp.fromMillis(now()) });
@@ -798,6 +850,23 @@ Object.assign(ACTIONS, {
     if (!d.handedOver) toast(`👕 มอบเสื้อ ${d.nickname || d.firstName} แล้ว`);
   }
 });
+const drawLine = r => `${r.drawNo}. ${fullName(r)}${r.nickname ? ` (${r.nickname})` : ''}`;
+async function copyDrawList() {
+  const list = drawRegs();
+  if (!list.length) return toast('ยังไม่มีใครจับฉลาก');
+  const txt = list.map(drawLine).join('\n');
+  try { await navigator.clipboard.writeText(txt); toast(`คัดลอก ${list.length} รายชื่อแล้ว`); }
+  catch { prompt('คัดลอกรายชื่อนี้', txt); }
+}
+async function exportDraw() {
+  let X;
+  try { X = await loadXLSX(); } catch { return toast('โหลดตัวสร้าง Excel ไม่สำเร็จ'); }
+  const rows = drawRegs().map(r => [r.drawNo, fullName(r), r.nickname || '', r.age ?? '', isYouth(r) ? 'เยาวชน' : 'ผู้ใหญ่', r.code, r.phone]);
+  const ws = X.utils.aoa_to_sheet([['ลำดับฉลาก', 'ชื่อ-นามสกุล', 'ชื่อในงาน', 'อายุ', 'กลุ่มอายุ', 'เลขสมัคร', 'เบอร์โทร'], ...rows]);
+  ws['!cols'] = [10, 24, 14, 6, 10, 11, 13].map(w => ({ wch: w }));
+  const wb = X.utils.book_new(); X.utils.book_append_sheet(wb, ws, 'ลำดับฉลาก');
+  X.writeFile(wb, `${EID}-ลำดับฉลาก.xlsx`);
+}
 async function exportLater() {
   let X;
   try { X = await loadXLSX(); } catch { return toast('โหลดตัวสร้าง Excel ไม่สำเร็จ'); }
