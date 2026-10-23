@@ -446,3 +446,9 @@ code{font-size:.75rem;background:#f5f0e2;padding:1px 4px;border-radius:3px}
 .desk-acts .act-btn{flex:1;min-width:140px}
 .act-btn.big{height:46px;font-size:.95rem}
 .desk-badges .status-badge{white-space:nowrap}
+.ship-box{margin-top:.6rem;background:#fff;border:1px solid var(--border);border-radius:8px;padding:.7rem}
+.ship-box.saved{background:#F5F9FF;border-color:#B5D4F4}
+.ship-addr{font-size:.85rem;line-height:1.6;margin-bottom:.2rem}
+.ship-line{font-size:.78rem;background:#F5F9FF;border:1px solid #B5D4F4;border-radius:5px;padding:4px 8px;margin-top:.4rem;color:#0C447C}
+.ship-line a{color:inherit}
+.desk-prod.ship{background:#E6F1FB;color:#0C447C;line-height:1.5}
