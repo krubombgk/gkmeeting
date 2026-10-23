@@ -452,3 +452,15 @@ code{font-size:.75rem;background:#f5f0e2;padding:1px 4px;border-radius:3px}
 .ship-line{font-size:.78rem;background:#F5F9FF;border:1px solid #B5D4F4;border-radius:5px;padding:4px 8px;margin-top:.4rem;color:#0C447C}
 .ship-line a{color:inherit}
 .desk-prod.ship{background:#E6F1FB;color:#0C447C;line-height:1.5}
+
+/* ── ลำดับฉลาก ─────────────────────────────── */
+.draw-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:.6rem;padding:.5rem .6rem;border-radius:8px;background:#F3EFFA;border:1px solid #CDBDF0}
+.draw-row.set{background:#EEE8FB}
+.draw-row.dup{background:#FCEBEB;border-color:#F7C1C1}
+.draw-lbl{font-size:.85rem;font-weight:600;color:#4A2C8A}
+.draw-no{font-family:'Sarabun',sans-serif;font-size:1.5rem;font-weight:700;color:#4A2C8A;background:#fff;border:2px solid #4A2C8A;border-radius:8px;min-width:46px;text-align:center;line-height:1.3}
+.draw-row input{width:80px;height:40px;border:1px solid #CDBDF0;border-radius:6px;text-align:center;font-size:1.1rem;font-family:'Sarabun',sans-serif}
+.draw-row .act-btn{height:40px}
+.draw-warn{width:100%;font-size:.8rem;color:#791F1F;font-weight:600}
+.draw-gaps{font-size:.82rem;background:#EEE8FB;color:#4A2C8A;border-radius:6px;padding:.5rem .7rem;margin-bottom:.6rem}
+.desk-stats{grid-template-columns:repeat(4,1fr)}
